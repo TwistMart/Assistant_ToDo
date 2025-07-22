@@ -7,8 +7,9 @@ plugins {
 
 android {
     namespace = "com.example.assistant_app"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    compileSdk = 35
+    ndkVersion = "26.1.10909125"
+   
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

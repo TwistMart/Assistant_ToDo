@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+// import 'package:daily_todo_app/models/task_model.dart' as app_models;
+
+import '../controllers/auth_controller.dart';
 import '../controllers/task_controller.dart';
-import '../models/task_model.dart';
+import '../models/task_model.dart' as app_models; // Alias to avoid conflict with Task widget
 
 class TaskFormScreen extends StatefulWidget {
   const TaskFormScreen({super.key});
@@ -12,18 +15,25 @@ class TaskFormScreen extends StatefulWidget {
 }
 
 class _TaskFormScreenState extends State<TaskFormScreen> {
-  final TaskController taskController = Get.find();
+  final TaskController taskController = Get.find<TaskController>();
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _titleController;
   late TextEditingController _descriptionController;
-  Task? _editingTask; // Task being edited, if any
+  app_models.Task? _editingTask;
+  app_models.Assistant? _selectedAssistant;
 
   @override
   void initState() {
     super.initState();
-    _editingTask = Get.arguments as Task?; // Get task passed for editing
+    _editingTask = Get.arguments as app_models.Task?;
     _titleController = TextEditingController(text: _editingTask?.title ?? '');
     _descriptionController = TextEditingController(text: _editingTask?.description ?? '');
+
+    if (_editingTask?.assignedToId != null) {
+      _selectedAssistant = taskController.assistants.firstWhereOrNull(
+        (assistant) => assistant.id == _editingTask!.assignedToId,
+      );
+    }
   }
 
   @override
@@ -33,24 +43,23 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     super.dispose();
   }
 
-  void _saveTask() {
+  void _submitForm() {
     if (_formKey.currentState!.validate()) {
-      final title = _titleController.text.trim();
-      final description = _descriptionController.text.trim();
-
       if (_editingTask == null) {
         // Add new task
-        taskController.addTask(title, description);
+        taskController.addTask(
+          _titleController.text,
+          _descriptionController.text.isEmpty ? null : _descriptionController.text,
+          _selectedAssistant?.id,
+        );
       } else {
         // Update existing task
-        final updatedTask = Task(
-          id: _editingTask!.id,
-          title: title,
-          description: description,
-          createdAt: _editingTask!.createdAt, // Preserve original creation date
-          updatedAt: DateTime.now(), // Update the updated_at manually for local UI
+        taskController.updateTask(
+          _editingTask!,
+          // title: _titleController.text,
+          // description: _descriptionController.text.isEmpty ? null : _descriptionController.text,
+          // assignedToId: _selectedAssistant?.id,
         );
-        taskController.updateTask(updatedTask);
       }
     }
   }
@@ -59,67 +68,70 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          _editingTask == null ? 'Add New Task' : 'Edit Task',
-          style: const TextStyle(color: Colors.white),
-        ),
-        backgroundColor: Colors.blueAccent,
-        iconTheme: const IconThemeData(color: Colors.white), // For back button color
-        elevation: 0,
+        title: Text(_editingTask == null ? 'Add New Task' : 'Edit Task'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
-          child: Column(
+          child: ListView(
             children: [
               TextFormField(
                 controller: _titleController,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'Title',
-                  hintText: 'Enter task title',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                  filled: true,
-                  fillColor: Colors.grey[100],
+                  border: OutlineInputBorder(),
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Title cannot be empty';
+                    return 'Please enter a title';
                   }
                   return null;
                 },
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 16.0),
               TextFormField(
                 controller: _descriptionController,
                 maxLines: 5,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'Description (Optional)',
-                  hintText: 'Enter task description',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                  alignLabelWithHint: true,
-                  filled: true,
-                  fillColor: Colors.grey[100],
+                  border: OutlineInputBorder(),
                 ),
               ),
-              const SizedBox(height: 24),
-              Obx(() => SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: taskController.isLoading.value ? null : _saveTask,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueAccent,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      child: taskController.isLoading.value
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : Text(
-                              _editingTask == null ? 'Add Task' : 'Update Task',
-                              style: const TextStyle(fontSize: 18, color: Colors.white),
-                            ),
-                    ),
-                  )),
+              const SizedBox(height: 16.0),
+              Obx(() {
+                if (taskController.assistants.isEmpty) {
+                  return const Text('No assistants available.');
+                }
+                return DropdownButtonFormField<app_models.Assistant>(
+                  decoration: const InputDecoration(
+                    labelText: 'Assign to Assistant (Optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                  value: _selectedAssistant,
+                  items: taskController.assistants.map((assistant) {
+                    return DropdownMenuItem<app_models.Assistant>(
+                      value: assistant,
+                      child: Text(assistant.name),
+                    );
+                  }).toList(),
+                  onChanged: (app_models.Assistant? newValue) {
+                    setState(() {
+                      _selectedAssistant = newValue;
+                    });
+                  },
+                  hint: const Text('Select an assistant'),
+                  isExpanded: true,
+                );
+              }),
+              const SizedBox(height: 24.0),
+              ElevatedButton(
+                onPressed: _submitForm,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12.0),
+                ),
+                child: Text(_editingTask == null ? 'Add Task' : 'Update Task'),
+              ),
             ],
           ),
         ),
